@@ -318,9 +318,11 @@ http-server-projeto-korp/
 
 ### Etapa 1 — Serviço HTTP
 
-* [ ] Criar serviço Golang
-* [ ] Implementar `GET /projeto-korp`
-* [ ] Retornar horário UTC dinamicamente
+* [X] Criar serviço Golang
+* [X] Implementar `GET /projeto-korp`
+* [X] Retornar horário UTC dinamicamente
+* [x] Adicionar endpoint `/health`
+* [x] Criar testes automatizados básicos
 * [ ] Criar Dockerfile
 * [ ] Validar execução em container
 
