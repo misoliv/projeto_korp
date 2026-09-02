@@ -328,11 +328,11 @@ http-server-projeto-korp/
 
 ### Etapa 2 — Docker e NGINX
 
-* [ ] Criar rede Docker
-* [ ] Criar Docker Compose
-* [ ] Configurar NGINX
-* [ ] Configurar proxy reverso
-* [ ] Validar acesso através da porta `80`
+* [X] Criar rede Docker
+* [X] Criar Docker Compose
+* [X] Configurar NGINX
+* [X] Configurar proxy reverso
+* [X] Validar acesso através da porta `80`
 
 ### Etapa 3 — Observabilidade
 

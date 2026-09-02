@@ -1,0 +1,34 @@
+services:
+  http-server-projeto-korp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: http-server-projeto-korp:latest
+    container_name: http-server-projeto-korp
+
+    networks:
+      - projeto-korp-network
+
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: nginx-projeto-korp
+
+    depends_on:
+      - http-server-projeto-korp
+
+    ports:
+      - "80:80"
+
+    volumes:
+      - ./nginx:/etc/nginx/conf.d:ro
+
+    networks:
+      - projeto-korp-network
+
+    restart: unless-stopped
+
+networks:
+  projeto-korp-network:
+    external: true
