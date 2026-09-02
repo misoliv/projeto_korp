@@ -340,8 +340,8 @@ http-server-projeto-korp/
 * [X] Monitorar disponibilidade
 * [X] Monitorar volume de requisições
 * [X] Configurar Prometheus
-* [ ] Configurar Grafana
-* [ ] Criar dashboard
+* [X] Configurar Grafana
+* [X] Criar dashboard
 
 ### Etapa 4 — Ansible
 

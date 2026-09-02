@@ -1,40 +1,87 @@
 services:
+
   http-server-projeto-korp:
     build:
       context: .
       dockerfile: Dockerfile
+
     image: http-server-projeto-korp:latest
     container_name: http-server-projeto-korp
+
     networks:
       - projeto-korp-network
+
     restart: unless-stopped
+
 
   nginx:
     image: nginx:alpine
     container_name: nginx-projeto-korp
+
     depends_on:
       - http-server-projeto-korp
+
     ports:
       - "80:80"
+
     volumes:
       - ./nginx:/etc/nginx/conf.d:ro
+
     networks:
       - projeto-korp-network
+
     restart: unless-stopped
+
 
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus-projeto-korp
+
     depends_on:
       - http-server-projeto-korp
+
     ports:
       - "9090:9090"
+
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
     networks:
       - projeto-korp-network
+
     restart: unless-stopped
+
+
+  grafana:
+    image: grafana/grafana:13.2.1
+    container_name: grafana-projeto-korp
+
+    depends_on:
+      - prometheus
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      # Persistência do Grafana
+      - grafana-data:/var/lib/grafana
+
+      # Provisionamento de datasources e dashboards
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+
+      # Arquivos JSON dos dashboards
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+    networks:
+      - projeto-korp-network
+
+    restart: unless-stopped
+
 
 networks:
   projeto-korp-network:
     external: true
+
+
+volumes:
+  grafana-data:
