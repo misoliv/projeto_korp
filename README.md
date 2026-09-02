@@ -323,8 +323,8 @@ http-server-projeto-korp/
 * [X] Retornar horário UTC dinamicamente
 * [x] Adicionar endpoint `/health`
 * [x] Criar testes automatizados básicos
-* [ ] Criar Dockerfile
-* [ ] Validar execução em container
+* [X] Criar Dockerfile
+* [X] Validar execução em container
 
 ### Etapa 2 — Docker e NGINX
 
