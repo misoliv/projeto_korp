@@ -336,10 +336,10 @@ http-server-projeto-korp/
 
 ### Etapa 3 — Observabilidade
 
-* [ ] Expor métricas Prometheus
-* [ ] Monitorar disponibilidade
-* [ ] Monitorar volume de requisições
-* [ ] Configurar Prometheus
+* [X] Expor métricas Prometheus
+* [X] Monitorar disponibilidade
+* [X] Monitorar volume de requisições
+* [X] Configurar Prometheus
 * [ ] Configurar Grafana
 * [ ] Criar dashboard
 
