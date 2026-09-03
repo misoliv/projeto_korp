@@ -1,0 +1,325 @@
+---
+- name: Provisionar ambiente Projeto Korp
+  hosts: projeto_korp
+  become: true
+  gather_facts: true
+
+  vars:
+    swap_file: /swapfile
+    swap_size: 2G
+    projeto_dir: /opt/projeto-korp
+
+  tasks:
+    # ---------------------------------------------------------
+    # Validacao inicial
+    # ---------------------------------------------------------
+
+    - name: Validar conexao com o host
+      ansible.builtin.ping:
+
+    - name: Exibir sistema operacional detectado
+      ansible.builtin.debug:
+        msg: >
+          Sistema: {{ ansible_distribution }}
+          {{ ansible_distribution_version }}
+          | Arquitetura: {{ ansible_architecture }}
+
+    # ---------------------------------------------------------
+    # Swap
+    # ---------------------------------------------------------
+
+    - name: Verificar se o arquivo de swap existe
+      ansible.builtin.stat:
+        path: "{{ swap_file }}"
+      register: swapfile_status
+
+    - name: Criar arquivo de swap de 2 GB
+      ansible.builtin.command:
+        argv:
+          - fallocate
+          - -l
+          - "{{ swap_size }}"
+          - "{{ swap_file }}"
+      when: not swapfile_status.stat.exists
+
+    - name: Definir permissoes do arquivo de swap
+      ansible.builtin.file:
+        path: "{{ swap_file }}"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Verificar se o swap ja esta ativo
+      ansible.builtin.command:
+        cmd: swapon --show=NAME --noheadings
+      register: active_swap
+      changed_when: false
+      failed_when: false
+
+    - name: Formatar arquivo como swap
+      ansible.builtin.command:
+        cmd: "mkswap {{ swap_file }}"
+      when:
+        - not swapfile_status.stat.exists
+        - swap_file not in active_swap.stdout
+
+    - name: Ativar swap
+      ansible.builtin.command:
+        cmd: "swapon {{ swap_file }}"
+      when: swap_file not in active_swap.stdout
+
+    - name: Persistir swap no fstab
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        line: "{{ swap_file }} swap swap defaults 0 0"
+        state: present
+
+    - name: Exibir memoria e swap disponiveis
+      ansible.builtin.command:
+        cmd: free -h
+      register: memory_status
+      changed_when: false
+
+    - name: Mostrar memoria e swap
+      ansible.builtin.debug:
+        var: memory_status.stdout_lines
+
+    # ---------------------------------------------------------
+    # Dependencias
+    # ---------------------------------------------------------
+
+    - name: Instalar dependencias necessarias
+      ansible.builtin.dnf:
+        name:
+          - curl
+          - git
+          - ca-certificates
+        state: present
+        update_cache: true
+
+    # ---------------------------------------------------------
+    # Repositorio Docker
+    # ---------------------------------------------------------
+
+    - name: Adicionar repositorio oficial do Docker
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+        owner: root
+        group: root
+        mode: "0644"
+
+    # ---------------------------------------------------------
+    # Docker
+    # ---------------------------------------------------------
+
+    - name: Instalar Docker Engine e Docker Compose
+      ansible.builtin.dnf:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: true
+
+    - name: Habilitar e iniciar Docker
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Adicionar usuario opc ao grupo docker
+      ansible.builtin.user:
+        name: opc
+        groups: docker
+        append: true
+
+    - name: Validar instalacao do Docker
+      ansible.builtin.command:
+        cmd: docker --version
+      register: docker_version
+      changed_when: false
+
+    - name: Exibir versao do Docker
+      ansible.builtin.debug:
+        var: docker_version.stdout
+
+    - name: Validar Docker Compose
+      ansible.builtin.command:
+        cmd: docker compose version
+      register: compose_version
+      changed_when: false
+
+    - name: Exibir versao do Docker Compose
+      ansible.builtin.debug:
+        var: compose_version.stdout
+
+    # ---------------------------------------------------------
+    # Diretorio da aplicacao
+    # ---------------------------------------------------------
+
+    - name: Criar diretorio do Projeto Korp
+      ansible.builtin.file:
+        path: "{{ projeto_dir }}"
+        state: directory
+        owner: opc
+        group: opc
+        mode: "0755"
+
+    - name: Criar diretorios de configuracao
+      ansible.builtin.file:
+        path: "{{ projeto_dir }}/{{ item }}"
+        state: directory
+        owner: opc
+        group: opc
+        mode: "0755"
+      loop:
+        - nginx
+        - prometheus
+        - grafana
+        - grafana/dashboards
+        - grafana/provisioning
+        - grafana/provisioning/datasources
+        - grafana/provisioning/dashboards
+
+    # ---------------------------------------------------------
+    # Arquivos principais
+    # ---------------------------------------------------------
+
+    - name: Copiar arquivos principais do projeto
+      ansible.builtin.copy:
+        src: "../{{ item }}"
+        dest: "{{ projeto_dir }}/{{ item }}"
+        owner: opc
+        group: opc
+        mode: "0644"
+      loop:
+        - main.go
+        - main_test.go
+        - go.mod
+        - go.sum
+        - Dockerfile
+        - compose.yml
+        - .dockerignore
+
+    # ---------------------------------------------------------
+    # NGINX
+    # ---------------------------------------------------------
+
+    - name: Copiar configuracao do NGINX
+      ansible.builtin.copy:
+        src: ../nginx/
+        dest: "{{ projeto_dir }}/nginx/"
+        owner: opc
+        group: opc
+        mode: "0644"
+
+    # ---------------------------------------------------------
+    # Prometheus
+    # ---------------------------------------------------------
+
+    - name: Copiar configuracao do Prometheus
+      ansible.builtin.copy:
+        src: ../prometheus/
+        dest: "{{ projeto_dir }}/prometheus/"
+        owner: opc
+        group: opc
+        mode: "0644"
+
+    # ---------------------------------------------------------
+    # Grafana
+    # ---------------------------------------------------------
+
+    - name: Copiar configuracao do Grafana
+      ansible.builtin.copy:
+        src: ../grafana/
+        dest: "{{ projeto_dir }}/grafana/"
+        owner: opc
+        group: opc
+
+    # ---------------------------------------------------------
+    # Rede Docker
+    # ---------------------------------------------------------
+
+    - name: Verificar rede Docker do Projeto Korp
+      ansible.builtin.command:
+        cmd: docker network inspect projeto-korp-network
+      register: docker_network
+      changed_when: false
+      failed_when: false
+
+    - name: Criar rede bridge do Projeto Korp
+      ansible.builtin.command:
+        cmd: docker network create --driver bridge projeto-korp-network
+      when: docker_network.rc != 0
+
+    # ---------------------------------------------------------
+    # Docker Compose
+    # ---------------------------------------------------------
+
+    - name: Validar arquivo Docker Compose
+      ansible.builtin.command:
+        cmd: docker compose config
+        chdir: "{{ projeto_dir }}"
+      changed_when: false
+
+    - name: Construir e iniciar containers
+      ansible.builtin.command:
+        cmd: docker compose up -d --build
+        chdir: "{{ projeto_dir }}"
+      register: compose_up
+
+    - name: Exibir resultado do Docker Compose
+      ansible.builtin.debug:
+        var: compose_up.stdout_lines
+
+    # ---------------------------------------------------------
+    # Validacao dos containers
+    # ---------------------------------------------------------
+
+    - name: Aguardar NGINX responder na porta 80
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 80
+        timeout: 180
+
+    - name: Verificar containers em execucao
+      ansible.builtin.command:
+        cmd: docker compose ps
+        chdir: "{{ projeto_dir }}"
+      register: compose_ps
+      changed_when: false
+
+    - name: Exibir containers
+      ansible.builtin.debug:
+        var: compose_ps.stdout_lines
+
+    # ---------------------------------------------------------
+    # Validacao HTTP
+    # ---------------------------------------------------------
+
+    - name: Validar endpoint Projeto Korp
+      ansible.builtin.uri:
+        url: http://127.0.0.1/projeto-korp
+        method: GET
+        return_content: true
+        status_code: 200
+      register: projeto_korp_response
+
+    - name: Exibir resposta do Projeto Korp
+      ansible.builtin.debug:
+        var: projeto_korp_response.content
+
+    - name: Validar health check
+      ansible.builtin.uri:
+        url: http://127.0.0.1/health
+        method: GET
+        return_content: true
+        status_code: 200
+      register: health_response
+
+    - name: Exibir resposta do health check
+      ansible.builtin.debug:
+        var: health_response.content
