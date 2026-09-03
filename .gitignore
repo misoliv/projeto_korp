@@ -1,0 +1,13 @@
+# Ansible - inventário local
+ansible/inventory.ini
+
+# Chaves SSH privadas
+*.pem
+*.key
+id_rsa
+id_ed25519
+projeto-korp-oci
+
+# Arquivos locais
+.env
+.env.*
