@@ -345,12 +345,12 @@ http-server-projeto-korp/
 
 ### Etapa 4 — Ansible
 
-* [ ] Automatizar instalação do Docker
-* [ ] Automatizar configuração do ambiente
-* [ ] Automatizar deploy com Docker Compose
-* [ ] Automatizar configurações de monitoramento
-* [ ] Validar o serviço pelo playbook
-* [ ] Exibir a resposta HTTP no console
+* [X] Automatizar instalação do Docker
+* [X] Automatizar configuração do ambiente
+* [X] Automatizar deploy com Docker Compose
+* [X] Automatizar configurações de monitoramento
+* [X] Validar o serviço pelo playbook
+* [X] Exibir a resposta HTTP no console
 
 ---
 
