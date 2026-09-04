@@ -11,3 +11,12 @@ projeto-korp-oci
 # Arquivos locais
 .env
 .env.*
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform/tfplan
+terraform/terraform.tfvars
+crash.log
