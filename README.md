@@ -1,10 +1,10 @@
 # Projeto Korp
 
-Desafio técnico com foco em desenvolvimento de serviço HTTP em Go, containerização, proxy reverso, observabilidade e automação de infraestrutura.
+Desafio técnico com foco em desenvolvimento de serviço HTTP em Go, containerização, proxy reverso, observabilidade, automação de infraestrutura e CI/CD.
 
 Além dos requisitos propostos, o projeto também foi implantado em uma instância Linux na Oracle Cloud Infrastructure (OCI), permitindo validar o provisionamento, a configuração e o deploy em um ambiente remoto real.
 
-Como evolução adicional, a infraestrutura OCI também foi modelada e provisionada utilizando Terraform, aplicando o conceito de Infrastructure as Code (IaC).
+Como evoluções adicionais, a infraestrutura OCI também foi modelada e provisionada utilizando Terraform, aplicando Infrastructure as Code (IaC), e foi implementada uma pipeline CI/CD com Jenkins para testes, build, deploy automatizado e validação da aplicação na OCI.
 
 ---
 
@@ -76,6 +76,32 @@ Docker Compose
    +-- Grafana
 ```
 
+### Fluxo CI/CD
+
+```text
+GitHub
+   |
+   v
+Jenkins
+   |
+   +-- Checkout
+   |
+   +-- Testes Go
+   |
+   +-- Docker Build
+   |
+   +-- Execução temporária
+   |
+   +-- Validação local
+   |
+   +-- Deploy OCI via Ansible
+   |
+   +-- Validação remota
+   |
+   v
+Oracle Cloud Infrastructure
+```
+
 ---
 
 ## Tecnologias utilizadas
@@ -88,6 +114,7 @@ Docker Compose
 - Grafana
 - Ansible
 - Terraform
+- Jenkins
 - Oracle Linux 9
 - Oracle Cloud Infrastructure (OCI)
 - WSL2
@@ -554,6 +581,218 @@ O código Terraform permanece versionado no repositório e permite reproduzir o 
 
 ---
 
+# CI/CD com Jenkins
+
+Foi implementada uma pipeline declarativa de CI/CD utilizando Jenkins.
+
+O Jenkins é executado localmente em um container Docker, enquanto o deploy é realizado remotamente na instância Oracle Linux hospedada na OCI.
+
+O pipeline é definido como código através do arquivo:
+
+```text
+Jenkinsfile
+```
+
+A imagem customizada utilizada pelo Jenkins é definida em:
+
+```text
+jenkins/Dockerfile
+```
+
+Essa imagem inclui:
+
+- Jenkins
+- Git
+- Docker CLI
+- SSH Client
+- Ansible
+
+Arquitetura:
+
+```text
+GitHub
+   ↓
+Jenkins local
+   ↓
+CI
+├── Checkout
+├── Test
+├── Build
+├── Run
+└── Validate
+   ↓
+CD
+├── Deploy OCI
+└── Validate OCI
+   ↓
+Oracle Linux 9
+   ↓
+Docker Compose
+   ↓
+Aplicação
+```
+
+## CI — Integração Contínua
+
+### Checkout
+
+O Jenkins obtém o código diretamente do repositório GitHub.
+
+```text
+GitHub
+→ Jenkins Workspace
+```
+
+### Test
+
+Os testes automatizados em Go são executados utilizando um container baseado na imagem oficial do Go:
+
+```bash
+go test -v ./...
+```
+
+A pipeline só continua caso os testes sejam concluídos com sucesso.
+
+### Build
+
+Após os testes, o Jenkins realiza o build da imagem Docker:
+
+```bash
+docker build -t http-server-projeto-korp:jenkins .
+```
+
+### Run
+
+A imagem criada é iniciada temporariamente em uma rede Docker específica da pipeline.
+
+### Validate
+
+Antes de realizar qualquer deploy na OCI, a própria pipeline testa:
+
+```text
+GET /projeto-korp
+GET /health
+```
+
+Caso alguma validação local falhe, o deploy não é executado.
+
+---
+
+## CD — Deploy automatizado na OCI
+
+Após a conclusão das etapas de CI, o Jenkins realiza automaticamente o deploy na VM OCI.
+
+O deploy utiliza:
+
+```text
+Jenkins
+   ↓
+Ansible
+   ↓ SSH
+Oracle Linux 9
+```
+
+O Jenkins executa:
+
+```bash
+ansible-playbook
+```
+
+utilizando o playbook já versionado em:
+
+```text
+ansible/playbook.yml
+```
+
+Um inventário Ansible temporário é criado durante a pipeline utilizando os dados armazenados no Jenkins Credentials.
+
+Esse inventário não é versionado nem enviado ao GitHub.
+
+### Credenciais
+
+As informações necessárias para acesso à OCI são armazenadas no Jenkins Credentials.
+
+A pipeline utiliza:
+
+```text
+oci-host
+```
+
+para o endereço da VM e:
+
+```text
+oci-ssh-key-file
+```
+
+para a chave SSH privada.
+
+Nenhuma chave privada, IP específico ou segredo é armazenado diretamente no `Jenkinsfile`.
+
+Durante a execução, o Jenkins disponibiliza as credenciais apenas para o estágio de deploy.
+
+### Deploy OCI
+
+O estágio:
+
+```text
+Deploy OCI
+```
+
+executa o Ansible contra a instância Oracle Linux.
+
+O playbook:
+
+- configura o host
+- valida swap
+- instala dependências
+- instala Docker
+- configura Docker Compose
+- copia os arquivos da aplicação
+- cria a rede Docker
+- realiza o build da aplicação
+- inicia os containers
+- valida o NGINX
+- valida a aplicação
+
+### Validate OCI
+
+Depois do deploy, a própria pipeline acessa o IP público da aplicação e valida:
+
+```text
+GET /projeto-korp
+GET /health
+```
+
+O build só termina com sucesso caso a aplicação esteja respondendo corretamente na OCI.
+
+### Cleanup
+
+Independentemente de sucesso ou falha, a pipeline remove os containers e redes temporários utilizados durante os testes locais.
+
+### Pipeline completa
+
+```text
+Checkout
+   ↓
+Test
+   ↓
+Build
+   ↓
+Run
+   ↓
+Validate
+   ↓
+Deploy OCI
+   ↓
+Validate OCI
+   ↓
+SUCCESS
+```
+
+Com isso, alterações no código podem passar por um fluxo automatizado de teste, build, deploy e validação.
+
+---
+
 # Execução local
 
 Crie a rede Docker:
@@ -697,6 +936,16 @@ As evidências abaixo correspondem ao provisionamento temporário realizado com 
 
 ---
 
+## Jenkins CI/CD
+
+### Pipeline concluída
+
+[![CI-CD-jenkins1.png](https://i.postimg.cc/s2dySQXN/CI-CD-jenkins1.png)](https://postimg.cc/ts5LGgF3)
+
+[![CI-CD-jenkins.png](https://i.postimg.cc/rpXcW0mn/CI-CD-jenkins.png)](https://postimg.cc/jDXGYjyP)
+
+---
+
 # Status do desafio
 
 ## Etapa 1 — Serviço Go
@@ -750,8 +999,11 @@ As evidências abaixo correspondem ao provisionamento temporário realizado com 
 - [x] Provisionamento OCI com Terraform
 - [x] Validação do Terraform em ambiente OCI real
 - [x] Integração Terraform + Ansible
-- [ ] CI/CD com Jenkins
-- [ ] Kubernetes
+- [x] CI com Jenkins
+- [x] CD automatizado para OCI
+- [x] Jenkinsfile versionado
+- [x] Deploy via Ansible executado pelo Jenkins
+- [x] Validação da aplicação após deploy
 
 ---
 
@@ -769,13 +1021,19 @@ projeto_korp/
 │       ├── terraform-instance.png
 │       ├── terraform-ansible.png
 │       ├── terraform-http-validation.png
-│       └── terraform-destroy.png
+│       ├── terraform-destroy.png
+│       ├── jenkins-cicd-pipeline.png
+│       ├── jenkins-deploy-oci.png
+│       └── jenkins-validate-oci.png
 │
 ├── grafana/
 │   ├── dashboards/
 │   └── provisioning/
 │       ├── dashboards/
 │       └── datasources/
+│
+├── jenkins/
+│   └── Dockerfile
 │
 ├── nginx/
 │   └── http-server-projeto-korp.conf
@@ -790,6 +1048,7 @@ projeto_korp/
 ├── .dockerignore
 ├── .gitignore
 ├── Dockerfile
+├── Jenkinsfile
 ├── compose.yml
 ├── go.mod
 ├── go.sum
@@ -798,16 +1057,44 @@ projeto_korp/
 └── README.md
 ```
 
-Arquivos locais e sensíveis, como `ansible/inventory.ini`, chaves privadas, arquivos `.tfstate`, planos Terraform e configurações de autenticação da OCI, não são versionados.
+Arquivos locais e sensíveis, como:
+
+```text
+ansible/inventory.ini
+chaves privadas
+arquivos .tfstate
+planos Terraform
+configurações de autenticação OCI
+credenciais Jenkins
+```
+
+não são versionados.
 
 ---
 
 ## Resultado
 
-O projeto demonstra a criação de um serviço HTTP em Go e sua evolução para um ambiente containerizado, observável e automatizado.
+O projeto demonstra a criação de um serviço HTTP em Go e sua evolução para um ambiente containerizado, observável, automatizado e integrado a uma pipeline CI/CD.
 
 A aplicação foi validada localmente com Docker Compose e também implantada em Oracle Linux na Oracle Cloud Infrastructure.
 
-O Ansible automatiza a configuração do servidor e o deploy da aplicação, enquanto o Terraform permite criar a infraestrutura OCI através de Infrastructure as Code.
+O Terraform permite criar a infraestrutura OCI através de Infrastructure as Code.
 
-A integração entre Terraform e Ansible também foi validada em ambiente real: a infraestrutura foi criada pelo Terraform, configurada pelo Ansible, validada através dos endpoints HTTP e posteriormente destruída de forma automatizada.
+O Ansible automatiza a configuração do sistema operacional, Docker, Docker Compose e o deploy da aplicação.
+
+A integração entre Terraform e Ansible foi validada em ambiente real: uma infraestrutura temporária foi criada pelo Terraform, configurada pelo Ansible, validada através dos endpoints HTTP e posteriormente destruída.
+
+O Jenkins adiciona CI/CD ao projeto, automatizando:
+
+```text
+Checkout
+→ Test
+→ Build
+→ Validate
+→ Deploy OCI
+→ Validate OCI
+```
+
+O deploy utiliza Ansible e credenciais protegidas pelo Jenkins Credentials, sem exposição de chaves privadas no código-fonte.
+
+Ao final da pipeline, a própria aplicação publicada na OCI é validada automaticamente através dos endpoints `/projeto-korp` e `/health`.
