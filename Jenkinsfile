@@ -18,8 +18,8 @@ pipeline {
             steps {
                 sh '''
                     docker run --rm \
-                      -v "$WORKSPACE:/app" \
-                      -w /app \
+                      --volumes-from jenkins-korp \
+                      -w "$WORKSPACE" \
                       golang:1.27-alpine \
                       sh -c "go test -v ./..."
                 '''
@@ -58,6 +58,7 @@ pipeline {
                     sleep 3
 
                     echo "Validando /projeto-korp"
+
                     docker run --rm \
                       --network $NETWORK_NAME \
                       curlimages/curl:8.10.1 \
@@ -66,6 +67,7 @@ pipeline {
                     echo ""
 
                     echo "Validando /health"
+
                     docker run --rm \
                       --network $NETWORK_NAME \
                       curlimages/curl:8.10.1 \
