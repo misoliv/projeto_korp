@@ -1,9 +1,17 @@
 FROM jenkins/jenkins:lts-jdk21
 
 USER root
+FROM jenkins/jenkins:lts-jdk21
+
+USER root
 
 RUN apt-get update \
-    && apt-get install -y ca-certificates curl \
+    && apt-get install -y \
+       ca-certificates \
+       curl \
+       git \
+       openssh-client \
+       ansible \
     && install -m 0755 -d /etc/apt/keyrings \
     && curl -fsSL https://download.docker.com/linux/debian/gpg \
        -o /etc/apt/keyrings/docker.asc \

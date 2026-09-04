@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    options {
+        skipDefaultCheckout(true)
+    }
+
     environment {
         IMAGE_NAME = 'http-server-projeto-korp:jenkins'
         CONTAINER_NAME = 'projeto-korp-ci'
@@ -14,6 +18,10 @@ pipeline {
             }
         }
 
+        // =========================
+        // CI - TESTES
+        // =========================
+
         stage('Test') {
             steps {
                 sh '''
@@ -26,6 +34,10 @@ pipeline {
             }
         }
 
+        // =========================
+        // CI - BUILD
+        // =========================
+
         stage('Build') {
             steps {
                 sh '''
@@ -35,6 +47,10 @@ pipeline {
                 '''
             }
         }
+
+        // =========================
+        // CI - EXECUÇÃO TEMPORÁRIA
+        // =========================
 
         stage('Run') {
             steps {
@@ -51,6 +67,10 @@ pipeline {
                 '''
             }
         }
+
+        // =========================
+        // CI - VALIDAÇÃO LOCAL
+        // =========================
 
         stage('Validate') {
             steps {
@@ -72,7 +92,84 @@ pipeline {
                       --network $NETWORK_NAME \
                       curlimages/curl:8.10.1 \
                       -fsS http://$CONTAINER_NAME:8080/health
+
+                    echo ""
                 '''
+            }
+        }
+
+        // =========================
+        // CD - DEPLOY OCI
+        // =========================
+
+        stage('Deploy OCI') {
+            steps {
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'oci-ssh-key',
+                        keyFileVariable: 'OCI_SSH_KEY',
+                        usernameVariable: 'OCI_SSH_USER'
+                    ),
+                    string(
+                        credentialsId: 'oci-host',
+                        variable: 'OCI_HOST'
+                    )
+                ]) {
+                    sh '''
+                        mkdir -p ~/.ssh
+                        chmod 700 ~/.ssh
+
+                        ssh-keygen -R "$OCI_HOST" 2>/dev/null || true
+                        ssh-keyscan -H "$OCI_HOST" >> ~/.ssh/known_hosts
+                        chmod 600 ~/.ssh/known_hosts
+
+                        INVENTORY_FILE=$(mktemp)
+
+                        trap 'rm -f "$INVENTORY_FILE"' EXIT
+
+                        cat > "$INVENTORY_FILE" <<EOF
+[projeto_korp]
+servidor-korp ansible_host=${OCI_HOST} ansible_user=${OCI_SSH_USER} ansible_ssh_private_key_file=${OCI_SSH_KEY} ansible_python_interpreter=/usr/bin/python3.9
+EOF
+
+                        echo "Executando deploy com Ansible..."
+
+                        ansible-playbook \
+                          -i "$INVENTORY_FILE" \
+                          ansible/playbook.yml
+                    '''
+                }
+            }
+        }
+
+        // =========================
+        // CD - VALIDAÇÃO OCI
+        // =========================
+
+        stage('Validate OCI') {
+            steps {
+                withCredentials([
+                    string(
+                        credentialsId: 'oci-host',
+                        variable: 'OCI_HOST'
+                    )
+                ]) {
+                    sh '''
+                        echo "Validando aplicação publicada na OCI..."
+
+                        docker run --rm \
+                          curlimages/curl:8.10.1 \
+                          -fsS http://$OCI_HOST/projeto-korp
+
+                        echo ""
+
+                        docker run --rm \
+                          curlimages/curl:8.10.1 \
+                          -fsS http://$OCI_HOST/health
+
+                        echo ""
+                    '''
+                }
             }
         }
     }
@@ -86,11 +183,11 @@ pipeline {
         }
 
         success {
-            echo 'Pipeline Projeto Korp concluída com sucesso.'
+            echo 'CI/CD Projeto Korp concluído com sucesso.'
         }
 
         failure {
-            echo 'Pipeline Projeto Korp falhou.'
+            echo 'Pipeline CI/CD Projeto Korp falhou.'
         }
     }
 }
