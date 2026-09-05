@@ -1,16 +1,20 @@
 # Projeto Korp
 
-Desafio técnico com foco em desenvolvimento de serviço HTTP em Go, containerização, proxy reverso, observabilidade, automação de infraestrutura e CI/CD.
+Desafio técnico com foco em desenvolvimento de serviço HTTP em Go, containerização, proxy reverso, observabilidade, automação de infraestrutura, CI/CD e orquestração de containers.
 
 Além dos requisitos propostos, o projeto também foi implantado em uma instância Linux na Oracle Cloud Infrastructure (OCI), permitindo validar o provisionamento, a configuração e o deploy em um ambiente remoto real.
 
-Como evoluções adicionais, a infraestrutura OCI também foi modelada e provisionada utilizando Terraform, aplicando Infrastructure as Code (IaC), e foi implementada uma pipeline CI/CD com Jenkins para testes, build, deploy automatizado e validação da aplicação na OCI.
+Como evoluções adicionais:
+
+- a infraestrutura OCI foi modelada e provisionada utilizando Terraform, aplicando Infrastructure as Code (IaC);
+- foi implementada uma pipeline CI/CD com Jenkins para testes, build, deploy automatizado e validação da aplicação na OCI;
+- a aplicação também foi executada em Kubernetes local, utilizando Deployments, Services, ConfigMap, múltiplas réplicas e health probes.
 
 ---
 
 ## Arquitetura
 
-### Arquitetura da aplicação
+### Arquitetura da aplicação na OCI
 
 ```text
                          INTERNET
@@ -102,6 +106,35 @@ Jenkins
 Oracle Cloud Infrastructure
 ```
 
+### Arquitetura Kubernetes
+
+O Kubernetes foi validado localmente através do cluster do Docker Desktop.
+
+```text
+Cliente local
+     |
+     | port-forward
+     v
+Service NGINX
+     |
+     v
+Deployment NGINX
+     |
+     | Service Discovery
+     v
+Service http-server-projeto-korp
+     |
+     +-----------------------+
+     |                       |
+     v                       v
+Pod Go #1                 Pod Go #2
+:8080                     :8080
+```
+
+O NGINX utiliza um `ConfigMap` para armazenar sua configuração de reverse proxy.
+
+A aplicação Go é executada com duas réplicas e possui `readinessProbe` e `livenessProbe` utilizando o endpoint `/health`.
+
 ---
 
 ## Tecnologias utilizadas
@@ -109,6 +142,8 @@ Oracle Cloud Infrastructure
 - Go
 - Docker
 - Docker Compose
+- Kubernetes
+- kubectl
 - NGINX
 - Prometheus
 - Grafana
@@ -117,6 +152,7 @@ Oracle Cloud Infrastructure
 - Jenkins
 - Oracle Linux 9
 - Oracle Cloud Infrastructure (OCI)
+- Docker Desktop
 - WSL2
 - Git
 - GitHub
@@ -239,11 +275,13 @@ NGINX
 http-server-projeto-korp
 ```
 
-Configuração:
+Configuração utilizada no ambiente Docker Compose:
 
 ```text
 nginx/http-server-projeto-korp.conf
 ```
+
+No Kubernetes, a configuração do NGINX é fornecida através de um `ConfigMap`.
 
 ---
 
@@ -698,7 +736,7 @@ O Jenkins executa:
 ansible-playbook
 ```
 
-utilizando o playbook já versionado em:
+utilizando o playbook versionado em:
 
 ```text
 ansible/playbook.yml
@@ -790,6 +828,194 @@ SUCCESS
 ```
 
 Com isso, alterações no código podem passar por um fluxo automatizado de teste, build, deploy e validação.
+
+---
+
+# Kubernetes
+
+Como evolução adicional, a aplicação também foi preparada e validada em um ambiente Kubernetes local utilizando o cluster disponibilizado pelo Docker Desktop.
+
+O manifesto está localizado em:
+
+```text
+kubernetes/k8s.yml
+```
+
+O ambiente Kubernetes utiliza:
+
+- Deployment da aplicação Go
+- duas réplicas da aplicação
+- Service `ClusterIP` para comunicação interna
+- ConfigMap para configuração do NGINX
+- Deployment do NGINX
+- Service do NGINX
+- readiness probe
+- liveness probe
+- resource requests e limits
+
+### Deployment da aplicação
+
+A aplicação Go é executada através de um `Deployment` com duas réplicas:
+
+```text
+http-server-projeto-korp
+├── Pod #1
+└── Pod #2
+```
+
+Isso permite demonstrar a capacidade do Kubernetes de manter múltiplas instâncias da aplicação.
+
+### Service
+
+O Service da aplicação utiliza:
+
+```text
+ClusterIP
+```
+
+permitindo que outros componentes do cluster acessem a aplicação pelo nome:
+
+```text
+http-server-projeto-korp:8080
+```
+
+Dessa forma, o NGINX não precisa conhecer diretamente os IPs dos Pods.
+
+### ConfigMap
+
+A configuração do NGINX é armazenada em um `ConfigMap`.
+
+O NGINX encaminha as requisições recebidas para:
+
+```text
+http://http-server-projeto-korp:8080
+```
+
+O Kubernetes realiza o service discovery através do nome do Service.
+
+### Health probes
+
+O endpoint:
+
+```text
+/health
+```
+
+é utilizado tanto como `readinessProbe` quanto como `livenessProbe`.
+
+```text
+readinessProbe
+→ verifica se o Pod está pronto para receber tráfego
+
+livenessProbe
+→ verifica se a aplicação continua saudável
+```
+
+Caso a aplicação deixe de responder à `livenessProbe`, o Kubernetes pode reiniciar o container automaticamente.
+
+### Recursos
+
+Também foram definidos `requests` e `limits` de CPU e memória.
+
+Exemplo:
+
+```yaml
+resources:
+  requests:
+    cpu: "100m"
+    memory: "64Mi"
+  limits:
+    cpu: "500m"
+    memory: "128Mi"
+```
+
+Isso permite controlar a quantidade de recursos solicitada e o limite máximo utilizado pelos containers.
+
+### Executar no Kubernetes
+
+Primeiro, selecione o contexto local:
+
+```bash
+kubectl config use-context docker-desktop
+```
+
+Valide o cluster:
+
+```bash
+kubectl get nodes
+```
+
+O node deve estar:
+
+```text
+Ready
+```
+
+Construa a imagem:
+
+```bash
+docker build -t http-server-projeto-korp:latest .
+```
+
+Aplique o manifesto:
+
+```bash
+kubectl apply -f kubernetes/k8s.yml
+```
+
+Valide os Pods:
+
+```bash
+kubectl get pods
+```
+
+Valide os Services:
+
+```bash
+kubectl get services
+```
+
+Para testar através do NGINX:
+
+```bash
+kubectl port-forward service/nginx 8082:80
+```
+
+Em outro terminal:
+
+```bash
+curl http://localhost:8082/projeto-korp
+curl http://localhost:8082/health
+```
+
+Resposta esperada:
+
+```json
+{
+  "nome": "Projeto Korp",
+  "horario": "<horario UTC atual>"
+}
+```
+
+e:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+### Limpeza
+
+Para remover os recursos criados no cluster:
+
+```bash
+kubectl delete -f kubernetes/k8s.yml
+```
+
+O manifesto continua versionado no repositório e pode ser aplicado novamente.
+
+> O Kubernetes foi utilizado localmente para demonstrar orquestração de containers. O ambiente principal na OCI continua utilizando Docker Compose.
 
 ---
 
@@ -946,6 +1172,22 @@ As evidências abaixo correspondem ao provisionamento temporário realizado com 
 
 ---
 
+## Kubernetes
+
+### Pods em execução
+
+[![kub-pods.png](https://i.postimg.cc/nVsMCKgD/kub-pods.png)](https://postimg.cc/SjhmP9yS)
+
+### Services
+
+[![kub-services.png](https://i.postimg.cc/QNBVHgwc/kub-services.png)](https://postimg.cc/PNjd7Dtq)
+
+### Validação dos endpoints
+
+[![kubernetes-validation.png](https://i.postimg.cc/J7ytG3vZ/kubernetes-validation.png)](https://postimg.cc/kDm7HSng)
+
+---
+
 # Status do desafio
 
 ## Etapa 1 — Serviço Go
@@ -1004,6 +1246,12 @@ As evidências abaixo correspondem ao provisionamento temporário realizado com 
 - [x] Jenkinsfile versionado
 - [x] Deploy via Ansible executado pelo Jenkins
 - [x] Validação da aplicação após deploy
+- [x] Kubernetes local
+- [x] Deployment com múltiplas réplicas
+- [x] Services Kubernetes
+- [x] ConfigMap para NGINX
+- [x] Readiness e liveness probes
+- [x] Resource requests e limits
 
 ---
 
@@ -1017,14 +1265,9 @@ projeto_korp/
 │
 ├── docs/
 │   └── images/
-│       ├── terraform-apply.png
-│       ├── terraform-instance.png
-│       ├── terraform-ansible.png
-│       ├── terraform-http-validation.png
-│       ├── terraform-destroy.png
-│       ├── jenkins-cicd-pipeline.png
-│       ├── jenkins-deploy-oci.png
-│       └── jenkins-validate-oci.png
+│       ├── kubernetes-pods.png
+│       ├── kubernetes-services.png
+│       └── kubernetes-validation.png
 │
 ├── grafana/
 │   ├── dashboards/
@@ -1034,6 +1277,9 @@ projeto_korp/
 │
 ├── jenkins/
 │   └── Dockerfile
+│
+├── kubernetes/
+│   └── k8s.yml
 │
 ├── nginx/
 │   └── http-server-projeto-korp.conf
@@ -1074,7 +1320,7 @@ não são versionados.
 
 ## Resultado
 
-O projeto demonstra a criação de um serviço HTTP em Go e sua evolução para um ambiente containerizado, observável, automatizado e integrado a uma pipeline CI/CD.
+O projeto demonstra a criação de um serviço HTTP em Go e sua evolução para um ambiente containerizado, observável, automatizado, integrado a uma pipeline CI/CD e preparado para execução em Kubernetes.
 
 A aplicação foi validada localmente com Docker Compose e também implantada em Oracle Linux na Oracle Cloud Infrastructure.
 
@@ -1098,3 +1344,18 @@ Checkout
 O deploy utiliza Ansible e credenciais protegidas pelo Jenkins Credentials, sem exposição de chaves privadas no código-fonte.
 
 Ao final da pipeline, a própria aplicação publicada na OCI é validada automaticamente através dos endpoints `/projeto-korp` e `/health`.
+
+Além do ambiente Docker Compose, a aplicação também foi validada em Kubernetes local utilizando:
+
+```text
+Deployment
+→ múltiplas réplicas
+→ Services
+→ ConfigMap
+→ readinessProbe
+→ livenessProbe
+→ resource requests/limits
+→ NGINX reverse proxy
+```
+
+Com isso, o projeto cobre desenvolvimento, containerização, observabilidade, automação de configuração, infraestrutura como código, cloud, CI/CD e conceitos de orquestração de containers.
