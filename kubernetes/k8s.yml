@@ -2,22 +2,35 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: http-server-projeto-korp
+
 spec:
   replicas: 2
+
   selector:
     matchLabels:
       app: http-server-projeto-korp
+
   template:
     metadata:
       labels:
         app: http-server-projeto-korp
+
     spec:
       containers:
         - name: http-server-projeto-korp
           image: http-server-projeto-korp:latest
           imagePullPolicy: Never
+
           ports:
             - containerPort: 8080
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "128Mi"
 
           readinessProbe:
             httpGet:
@@ -38,12 +51,15 @@ apiVersion: v1
 kind: Service
 metadata:
   name: http-server-projeto-korp
+
 spec:
   selector:
     app: http-server-projeto-korp
+
   ports:
     - port: 8080
       targetPort: 8080
+
   type: ClusterIP
 
 ---
@@ -51,6 +67,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: nginx-config
+
 data:
   default.conf: |
     server {
@@ -59,6 +76,7 @@ data:
         location / {
             proxy_pass http://http-server-projeto-korp:8080;
             proxy_http_version 1.1;
+
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -71,21 +89,34 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: nginx
+
 spec:
   replicas: 1
+
   selector:
     matchLabels:
       app: nginx
+
   template:
     metadata:
       labels:
         app: nginx
+
     spec:
       containers:
         - name: nginx
           image: nginx:alpine
+
           ports:
             - containerPort: 80
+
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "64Mi"
 
           volumeMounts:
             - name: nginx-config
@@ -101,10 +132,13 @@ apiVersion: v1
 kind: Service
 metadata:
   name: nginx
+
 spec:
   selector:
     app: nginx
+
   ports:
     - port: 80
       targetPort: 80
+
   type: NodePort
